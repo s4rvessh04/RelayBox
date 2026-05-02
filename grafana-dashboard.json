@@ -1,0 +1,208 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "collapsed": 1,
+        "enable": true,
+        "hide": true,
+        "icon": "guillotine",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearOffset": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": 0,
+  "panels": [
+    {
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 8,
+      "title": "Relay Pipeline Health",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "axisCenteredZero": false, "axis decimals": 0, "barChart": { "groupWidth": 0.5 }, "drawStyle": "lines", "lineInterpolation": "linear", "lineWidth": 2 },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1000 }
+            ]
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "id": 1,
+      "options": {
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": [], "values": { "sort": "auto", "span": 2 } },
+        "text": { "valueScale": 0 }
+      },
+      "plugin": { "default": "gauge", "version": 10 },
+      "targets": [
+        {
+          "expr": "relay_pending_events_count",
+          "refId": "A"
+        }
+      ],
+      "title": "DB Lag (Pending Events)"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "graphStyle": "area", "lineWidth": 2 },
+          "unit": "reqps"
+        }
+      },
+      "gridPos": { "h": 4, "w": 9, "x": 6, "y": 1 },
+      "id": 2,
+      "plugin": { "default": "timeseries" },
+      "targets": [
+        {
+          "expr": "rate(relay_events_published_total[1m])",
+          "legendFormat": "Published/sec",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(relay_events_failed_total[1m])",
+          "legendFormat": "Failed/sec",
+          "refId": "B"
+        }
+      ],
+      "title": "Relay Throughput"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        }
+      },
+      "gridPos": { "h": 4, "w": 9, "x": 15, "y": 1 },
+      "id": 3,
+      "plugin": { "default": "timeseries" },
+      "targets": [
+        {
+          "expr": "rate(relay_batch_duration_seconds_sum[1m]) / rate(relay_batch_duration_seconds_count[1m])",
+          "legendFormat": "Avg Batch Duration",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(relay_kafka_publish_duration_seconds_sum[1m]) / rate(relay_kafka_publish_duration_seconds_count[1m])",
+          "legendFormat": "Avg Kafka Latency",
+          "refId": "B"
+        }
+      ],
+      "title": "Performance Latency"
+    },
+    {
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "id": 9,
+      "title": "Consumer Health",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        }
+      },
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 6 },
+      "id": 4,
+      "plugin": { "default": "timeseries" },
+      "targets": [
+        {
+          "expr": "rate(consumer_events_processed_total[1m])",
+          "legendFormat": "Processed/sec",
+          "refId": "A"
+        }
+      ],
+      "title": "Consumer Throughput"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        }
+      },
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 6 },
+      "id": 5,
+      "plugin": { "default": "timeseries" },
+      "targets": [
+        {
+          "expr": "rate(consumer_idempotency_skips_total[1m])",
+          "legendFormat": "Duplicates Skipped/sec",
+          "refId": "A"
+        }
+      ],
+      "title": "Idempotency Skip Rate"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        }
+      },
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 6 },
+      "id": 6,
+      "plugin": { "default": "timeseries" },
+      "targets": [
+        {
+          "expr": "rate(consumer_processing_duration_seconds_sum[1m]) / rate(consumer_processing_duration_seconds_count[1m])",
+          "legendFormat": "Avg Processing Duration",
+          "refId": "A"
+        }
+      ],
+      "title": "Consumer Processing Latency"
+    },
+    {
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 10 },
+      "id": 10,
+      "title": "Event Insights",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 11 },
+      "id": 7,
+      "plugin": { "default": "piechart" },
+      "targets": [
+        {
+          "expr": "sum by (event_type) (rate(relay_events_total[5m]))",
+          "legendFormat": "{{event_type}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Event Distribution (5m)"
+    }
+  ],
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": ["relaybox", "outbox"],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "autosync": 1,
+    "from": "now-1h",
+    "to": "now"
+  },
+  "title": "RelayBox Performance Dashboard",
+  "uid": "relaybox-dashboard",
+  "version": 1
+}
