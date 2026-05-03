@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"outbox-relay/internal/store"
 )
 
 type Event struct {
@@ -18,23 +18,23 @@ type Event struct {
 }
 
 type Manager struct {
-	pool *pgxpool.Pool
+	store store.PostgresStoreInterface
 }
 
-func NewManager(pool *pgxpool.Pool) *Manager {
-	return &Manager{pool: pool}
+func NewManager(s store.PostgresStoreInterface) *Manager {
+	return &Manager{store: s}
 }
 
 func (m *Manager) Push(ctx context.Context, e Event) error {
-	_, err := m.pool.Exec(ctx, `
+	_, err := m.store.Exec(ctx, `
 		INSERT INTO outbox_dlq (id, original_id, aggregate_type, aggregate_id, event_type, payload, error_message)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-		uuid.New(), e.OriginalID, e.AggregateType, e.AggregateID, e.EventType, e.Payload, e.ErrorMessage)
+		e.ID, e.OriginalID, e.AggregateType, e.AggregateID, e.EventType, e.Payload, e.ErrorMessage)
 	return err
 }
 
 func (m *Manager) RetryBatch(ctx context.Context, limit int) (int64, error) {
-	tx, err := m.pool.Begin(ctx)
+	tx, err := m.store.Begin(ctx)
 	if err != nil {
 		return 0, err
 	}
@@ -68,13 +68,10 @@ func (m *Manager) RetryBatch(ctx context.Context, limit int) (int64, error) {
 		return 0, err
 	}
 
-	// In real impl, we would move tokens back to main outbox table here
-	// Since we only have a simplified flow, we'll just mark as deleted
-
 	return int64(len(ids)), tx.Commit(ctx)
 }
 
 func (m *Manager) Purge(ctx context.Context) error {
-	_, err := m.pool.Exec(ctx, `UPDATE outbox_dlq SET deleted_at = NOW() WHERE deleted_at IS NULL`)
+	_, err := m.store.Exec(ctx, `UPDATE outbox_dlq SET deleted_at = NOW() WHERE deleted_at IS NULL`)
 	return err
 }

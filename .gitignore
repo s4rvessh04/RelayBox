@@ -8,6 +8,11 @@
 *.so
 *.dylib
 
+# Compiled Go binaries
+/relay
+/consumer
+/loadgen
+
 # Test binary, built with `go test -c`
 *.test
 

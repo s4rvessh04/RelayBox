@@ -23,6 +23,20 @@ type OutboxEvent struct {
 	RetryCount     int
 }
 
+type PostgresStoreInterface interface {
+	Close() error
+	GetPendingCount(ctx context.Context) (int64, error)
+	Ping(ctx context.Context) error
+	FetchPendingBatch(ctx context.Context, limit int) ([]*OutboxEvent, pgx.Tx, error)
+	MarkSent(ctx context.Context, tx pgx.Tx, ids []uuid.UUID) error
+	MarkFailed(ctx context.Context, tx pgx.Tx, ids []uuid.UUID) error
+	ResetToPending(ctx context.Context, eventType string) (int64, error)
+	ResetFailedForRetry(ctx context.Context, maxRetries int) (int64, error)
+	Exec(ctx context.Context, query string, args ...any) (any, error)
+	Begin(ctx context.Context) (pgx.Tx, error)
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+}
+
 type PostgresStore struct {
 	pool *pgxpool.Pool
 }
@@ -33,6 +47,18 @@ func NewPostgresStore(ctx context.Context, connString string) (*PostgresStore, e
 		return nil, err
 	}
 	return &PostgresStore{pool: pool}, nil
+}
+
+func (s *PostgresStore) Exec(ctx context.Context, query string, args ...any) (any, error) {
+	return s.pool.Exec(ctx, query, args...)
+}
+
+func (s *PostgresStore) Begin(ctx context.Context) (pgx.Tx, error) {
+	return s.pool.Begin(ctx)
+}
+
+func (s *PostgresStore) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+	return s.pool.Query(ctx, sql, args...)
 }
 
 func (s *PostgresStore) Close() error {
@@ -108,6 +134,20 @@ func (s *PostgresStore) ResetToPending(ctx context.Context, eventType string) (i
 		SET status = 'PENDING', retry_count = 0
 		WHERE status = 'FAILED' AND ($1 = '' OR event_type = $1)
 	`, eventType)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
+// ResetFailedForRetry resets FAILED events with retry_count below maxRetries back to PENDING.
+// This enables automatic bounded retries without manual intervention.
+func (s *PostgresStore) ResetFailedForRetry(ctx context.Context, maxRetries int) (int64, error) {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE outbox_events
+		SET status = 'PENDING'
+		WHERE status = 'FAILED' AND retry_count < $1
+	`, maxRetries)
 	if err != nil {
 		return 0, err
 	}

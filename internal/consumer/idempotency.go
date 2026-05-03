@@ -73,15 +73,18 @@ func (c *IdempotentConsumer) Process(ctx context.Context, event *Event) error {
 		if id == (uuid.UUID{}) {
 			id = uuid.New()
 		}
-		_ = c.dlq.Push(ctx, dlq.Event{
+		dlqErr := c.dlq.Push(ctx, dlq.Event{
 			ID:            id,
 			OriginalID:    id,
 			AggregateType: event.AggregateType,
 			AggregateID:   event.AggregateID,
-			EventType:      event.EventType,
+			EventType:     event.EventType,
 			Payload:       event.Payload,
 			ErrorMessage:  err.Error(),
 		})
+		if dlqErr != nil {
+			log.Printf("CRITICAL: failed to push event %s to DLQ: %v (original error: %v)", event.ID, dlqErr, err)
+		}
 
 		return fmt.Errorf("handler processing failed: %w", err)
 	}

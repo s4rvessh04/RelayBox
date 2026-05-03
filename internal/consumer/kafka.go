@@ -13,12 +13,13 @@ type KafkaConsumer struct {
 }
 
 // NewKafkaConsumer initializes a new Kafka consumer and subscribes to the provided topics.
+// Auto-commit is disabled to ensure offsets are only committed after successful processing.
 func NewKafkaConsumer(brokers, groupID string, topics []string) (*KafkaConsumer, error) {
 	c, err := kafka.NewConsumer(&kafka.ConfigMap{
 		"bootstrap.servers":  brokers,
 		"group.id":           groupID,
 		"auto.offset.reset":  "earliest",
-		"enable.auto.commit": true,
+		"enable.auto.commit": false,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create consumer: %w", err)
@@ -35,17 +36,19 @@ func NewKafkaConsumer(brokers, groupID string, topics []string) (*KafkaConsumer,
 	}, nil
 }
 
-// Start polls Kafka for messages and passes them to the provided handler.
+// Start polls Kafka for messages, extracts event metadata from headers,
+// and passes structured events to the provided handler.
+// Offsets are committed only after the handler returns successfully.
 func (kc *KafkaConsumer) Start(ctx context.Context, handler func(ctx context.Context, event *Event) error) error {
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
-			// ReadMessage blocks until a message is available or timeout occurs.
-			msg, err := kc.consumer.ReadMessage(100)
+			// ReadMessage blocks until a message is available or timeout (1s).
+			msg, err := kc.consumer.ReadMessage(1000)
 			if err != nil {
-				// Check if it's a timeout error (which is expected during polling)
+				// Timeout errors are expected during polling
 				if kerr, ok := err.(kafka.Error); ok && kerr.Code() == kafka.ErrTimedOut {
 					continue
 				}
@@ -53,17 +56,41 @@ func (kc *KafkaConsumer) Start(ctx context.Context, handler func(ctx context.Con
 				continue
 			}
 
-			// Mapping the Kafka key to IdempotencyKey and ID for the sample implementation.
-			// In a production system, the payload (msg.Value) would be parsed as JSON
-			// to extract the actual event ID and idempotency key.
+			// Parse event metadata from Kafka headers
 			event := &Event{
-				ID:             string(msg.Key),
-				IdempotencyKey: string(msg.Key),
-				Payload:        msg.Value,
+				AggregateID: string(msg.Key),
+				Payload:     msg.Value,
+			}
+			for _, h := range msg.Headers {
+				switch h.Key {
+				case "event_id":
+					event.ID = string(h.Value)
+				case "aggregate_type":
+					event.AggregateType = string(h.Value)
+				case "event_type":
+					event.EventType = string(h.Value)
+				case "idempotency_key":
+					event.IdempotencyKey = string(h.Value)
+				}
+			}
+
+			// Fallback: use Kafka key if headers are missing (backward compat)
+			if event.ID == "" {
+				event.ID = string(msg.Key)
+			}
+			if event.IdempotencyKey == "" {
+				event.IdempotencyKey = string(msg.Key)
 			}
 
 			if err := handler(ctx, event); err != nil {
 				log.Printf("Event processing error for event %s: %v", event.ID, err)
+				// Don't commit offset on failure — message will be redelivered
+				continue
+			}
+
+			// Commit offset only after successful processing
+			if _, err := kc.consumer.CommitMessage(msg); err != nil {
+				log.Printf("Failed to commit offset for event %s: %v", event.ID, err)
 			}
 		}
 	}

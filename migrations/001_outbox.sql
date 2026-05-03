@@ -1,5 +1,4 @@
---C:\
--- Create the outbox table
+-- Migration 001: Create the outbox table
 CREATE TABLE outbox_events (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     aggregate_type  VARCHAR(100) NOT NULL,  -- "Order", "Payment"

@@ -1,28 +1,50 @@
 package admin
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
-
-	"outbox-relay/internal/store"
+	"strings"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-type AdminHandler struct {
-	pgStore *store.PostgresStore
+// AdminStore defines the minimal store interface required by the admin handler.
+type AdminStore interface {
+	Ping(ctx context.Context) error
+	ResetToPending(ctx context.Context, eventType string) (int64, error)
 }
 
-func NewAdminHandler(pg *store.PostgresStore) *AdminHandler {
-	return &AdminHandler{pgStore: pg}
+type AdminHandler struct {
+	pgStore    AdminStore
+	adminToken string
+}
+
+func NewAdminHandler(pg AdminStore, adminToken string) *AdminHandler {
+	return &AdminHandler{pgStore: pg, adminToken: adminToken}
 }
 
 func (h *AdminHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /health", h.handleHealth)
 	mux.Handle("GET /metrics", promhttp.Handler())
-	mux.HandleFunc("POST /replay", h.handleReplay)
+	mux.HandleFunc("POST /replay", h.authMiddleware(h.handleReplay))
+}
+
+// authMiddleware checks for a valid Bearer token if ADMIN_TOKEN is configured.
+// If no token is configured, auth is skipped (for local development).
+func (h *AdminHandler) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if h.adminToken != "" {
+			auth := r.Header.Get("Authorization")
+			if !strings.HasPrefix(auth, "Bearer ") || strings.TrimPrefix(auth, "Bearer ") != h.adminToken {
+				jsonResponse(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+				return
+			}
+		}
+		next(w, r)
+	}
 }
 
 func (h *AdminHandler) handleHealth(w http.ResponseWriter, r *http.Request) {
